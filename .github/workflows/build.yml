@@ -145,4 +145,87 @@ jobs:
     - name: Setup Terraform
       uses: hashicorp/setup-terraform@v3
       with:
-        t
+        terraform_version: 1.12.0
+
+    # ─────────────────────────────────────────
+    # STEP 6 - Terraform Init
+    # Connects to S3 state backend
+    # ─────────────────────────────────────────
+    - name: Terraform Init
+      run: |
+        terraform init
+        echo "Terraform initialized! ✅"
+
+    # ─────────────────────────────────────────
+    # STEP 7 - Terraform Validate
+    # ─────────────────────────────────────────
+    - name: Terraform Validate
+      run: |
+        terraform validate
+        echo "Terraform configuration valid! ✅"
+
+    # ─────────────────────────────────────────
+    # STEP 8 - Terraform Format Check
+    # ─────────────────────────────────────────
+    - name: Terraform Format Check
+      run: terraform fmt -check
+      continue-on-error: true
+
+    # ─────────────────────────────────────────
+    # STEP 9 - Terraform Plan
+    # ─────────────────────────────────────────
+    - name: Terraform Plan
+      run: |
+        terraform plan \
+          -var="aws_region=us-east-1" \
+          -var="environment=prod" \
+          -var="project_name=EC2App" \
+          -var="instance_type=t2.micro" \
+          -var="ami_id=ami-0c02fb55956c7d316" \
+          -out=tfplan
+        echo "Terraform plan complete! ✅"
+
+    # ─────────────────────────────────────────
+    # STEP 10 - Terraform Apply
+    # Runs on push to main or manual apply
+    # ─────────────────────────────────────────
+    - name: Terraform Apply
+      if: |
+        github.ref == 'refs/heads/main' &&
+        (github.event_name == 'push' ||
+        github.event.inputs.action == 'apply')
+      run: |
+        terraform apply -auto-approve tfplan
+        echo "EC2 instance created! ✅"
+
+    # ─────────────────────────────────────────
+    # STEP 11 - Terraform Destroy
+    # Only on manual trigger with destroy action
+    # ─────────────────────────────────────────
+    - name: Terraform Destroy
+      if: github.event.inputs.action == 'destroy'
+      run: |
+        terraform destroy -auto-approve \
+          -var="aws_region=us-east-1" \
+          -var="environment=prod" \
+          -var="project_name=EC2App" \
+          -var="instance_type=t2.micro" \
+          -var="ami_id=ami-0c02fb55956c7d316"
+        echo "EC2 destroyed! ✅"
+
+    # ─────────────────────────────────────────
+    # STEP 12 - Show Outputs
+    # ─────────────────────────────────────────
+    - name: Show Outputs
+      if: github.event.inputs.action != 'destroy'
+      run: |
+        echo "========================================="
+        echo "  TERRAFORM OUTPUTS"
+        echo "========================================="
+        terraform output
+        echo "========================================="
+        echo "  STATE FILE LOCATION"
+        echo "  Bucket : ec2-terraform-state-373447294485"
+        echo "  Key    : ec2/terraform.tfstate"
+        echo "  Lock   : ec2-terraform-state-lock"
+        echo "========================================="
