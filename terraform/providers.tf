@@ -9,11 +9,11 @@ terraform {
   }
 
   backend "s3" {
-    bucket         = "ec2-terraform-state-bucket-373447294485"
-    key            = "ec2/terraform.tfstate"
-    region         = "us-east-1"
-    encrypt        = true
-    dynamodb_table = "ec2-terraform-state-lock"
+    bucket       = "ec2-terraform-state-373447294485"
+    key          = "ec2/terraform.tfstate"
+    region       = "us-east-1"
+    encrypt      = true
+    use_lockfile = true
   }
 }
 
