@@ -58,7 +58,7 @@ jobs:
     # NOT managed by Terraform!
     # ─────────────────────────────────────────
     - name: Bootstrap State Backend
-      working-directory: .
+      working-directory: ${{ github.workspace }}
       run: |
         STATE_BUCKET="ec2-terraform-state-373447294485"
         LOCK_TABLE="ec2-terraform-state-lock"
