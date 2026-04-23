@@ -15,6 +15,7 @@ on:
           - apply
           - destroy
 
+# Required for OIDC
 permissions:
   id-token: write
   contents: read
@@ -24,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: .
+        working-directory: terraform
 
     steps:
     # ─────────────────────────────────────────
@@ -54,11 +55,12 @@ jobs:
     # ─────────────────────────────────────────
     # STEP 4 - Bootstrap State Backend
     # Creates S3 + DynamoDB for tfstate only
+    # NOT managed by Terraform!
     # ─────────────────────────────────────────
     - name: Bootstrap State Backend
       working-directory: .
       run: |
-        STATE_BUCKET="ec2-terraform-state-bucket"
+        STATE_BUCKET="ec2-terraform-state-373447294485"
         LOCK_TABLE="ec2-terraform-state-lock"
         REGION="us-east-1"
 
@@ -66,7 +68,7 @@ jobs:
         echo " Bootstrapping State Backend"
         echo "========================================="
 
-        # Create S3 state bucket if not exists
+        # ── Create S3 state bucket if not exists ──
         if aws s3api head-bucket \
           --bucket $STATE_BUCKET 2>/dev/null; then
           echo "State bucket exists: $STATE_BUCKET ✅"
@@ -104,10 +106,10 @@ jobs:
                RestrictPublicBuckets=true"
           echo "Public access blocked! ✅"
 
-          echo "State bucket created! ✅"
+          echo "State bucket created: $STATE_BUCKET ✅"
         fi
 
-        # Create DynamoDB lock table if not exists
+        # ── Create DynamoDB lock table if not exists ──
         if aws dynamodb describe-table \
           --table-name $LOCK_TABLE \
           --region $REGION 2>/dev/null; then
@@ -128,7 +130,7 @@ jobs:
             --table-name $LOCK_TABLE \
             --region $REGION
 
-          echo "Lock table created! ✅"
+          echo "Lock table created: $LOCK_TABLE ✅"
         fi
 
         echo "========================================="
@@ -143,74 +145,4 @@ jobs:
     - name: Setup Terraform
       uses: hashicorp/setup-terraform@v3
       with:
-        terraform_version: 1.12.0
-
-    # ─────────────────────────────────────────
-    # STEP 6 - Terraform Init
-    # ─────────────────────────────────────────
-    - name: Terraform Init
-      run: |
-        terraform init
-        echo "Terraform initialized! ✅"
-
-    # ─────────────────────────────────────────
-    # STEP 7 - Terraform Validate
-    # ─────────────────────────────────────────
-    - name: Terraform Validate
-      run: |
-        terraform validate
-        echo "Terraform valid! ✅"
-
-    # ─────────────────────────────────────────
-    # STEP 8 - Terraform Format Check
-    # ─────────────────────────────────────────
-    - name: Terraform Format Check
-      run: terraform fmt -check
-      continue-on-error: true
-
-    # ─────────────────────────────────────────
-    # STEP 9 - Terraform Plan
-    # ─────────────────────────────────────────
-    - name: Terraform Plan
-      run: |
-        terraform plan \
-          -var="aws_region=us-east-1" \
-          -var="environment=prod" \
-          -var="project_name=EC2App" \
-          -var="instance_type=t2.micro" \
-          -var="ami_id=ami-0c02fb55956c7d316" \
-          -out=tfplan
-        echo "Terraform plan complete! ✅"
-
-    # ─────────────────────────────────────────
-    # STEP 10 - Terraform Apply
-    # ─────────────────────────────────────────
-    - name: Terraform Apply
-      if: |
-        github.ref == 'refs/heads/main' &&
-        (github.event_name == 'push' ||
-        github.event.inputs.action == 'apply')
-      run: |
-        terraform apply -auto-approve tfplan
-        echo "EC2 instance created! ✅"
-
-    # ─────────────────────────────────────────
-    # STEP 11 - Terraform Destroy
-    # ─────────────────────────────────────────
-    - name: Terraform Destroy
-      if: github.event.inputs.action == 'destroy'
-      run: |
-        terraform destroy -auto-approve \
-          -var="aws_region=us-east-1" \
-          -var="environment=prod" \
-          -var="project_name=EC2App" \
-          -var="instance_type=t2.micro" \
-          -var="ami_id=ami-0c02fb55956c7d316"
-        echo "EC2 destroyed! ✅"
-
-    # ─────────────────────────────────────────
-    # STEP 12 - Show Outputs
-    # ─────────────────────────────────────────
-    - name: Show Outputs
-      if: github.event.inputs.action != 'destroy'
-      run: terraform output
+        t
