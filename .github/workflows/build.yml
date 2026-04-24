@@ -134,9 +134,6 @@ jobs:
         echo "EC2 destroyed!"
 
     # ─────────────────────────────────────────
-    # Download PEM from S3
-    # Save EC2 IP for deploy pipeline
-    # ─────────────────────────────────────────
     - name: Get EC2 Info and Download PEM
       if: github.event.inputs.action != 'destroy'
       run: |
@@ -154,8 +151,16 @@ jobs:
         chmod 600 ./EC2App-deploy-key.pem
         echo "PEM file downloaded!"
 
+        # Create .ssh directory first!
+        mkdir -p ~/.ssh
+        chmod 700 ~/.ssh
+
+        echo "Waiting for EC2 to be ready..."
+        sleep 30
+
         echo "Testing SSH connection..."
         ssh-keyscan -H $PUBLIC_IP >> ~/.ssh/known_hosts
+
         ssh -i ./EC2App-deploy-key.pem \
           -o StrictHostKeyChecking=no \
           ec2-user@$PUBLIC_IP \
@@ -164,8 +169,6 @@ jobs:
         echo "========================================="
         echo "  Add to GitHub Secrets for deploy:"
         echo "  EC2_HOST = $PUBLIC_IP"
-        echo "  EC2_SSH_KEY = (download from S3)"
-        echo "  $PEM_S3_PATH"
         echo "========================================="
 
     - name: Show Outputs
