@@ -6,6 +6,11 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.82"
     }
+    # Add TLS provider for key generation
+    tls = {
+      source  = "hashicorp/tls"
+      version = "~> 4.0"
+    }
   }
 
   backend "s3" {
@@ -20,3 +25,5 @@ terraform {
 provider "aws" {
   region = var.aws_region
 }
+
+provider "tls" {}

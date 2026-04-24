@@ -43,8 +43,7 @@ jobs:
         echo "Role assumed successfully!"
 
     # ─────────────────────────────────────────
-    # Bootstrap - S3 only (no DynamoDB needed)
-    # use_lockfile = true handles locking in S3
+    # Bootstrap State Backend
     # ─────────────────────────────────────────
     - name: Bootstrap State Backend
       working-directory: ${{ github.workspace }}
@@ -70,27 +69,21 @@ jobs:
           aws s3api put-bucket-versioning \
             --bucket $STATE_BUCKET \
             --versioning-configuration Status=Enabled
-          echo "Versioning enabled!"
 
           ENCRYPTION_CONFIG='{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}'
           aws s3api put-bucket-encryption \
             --bucket $STATE_BUCKET \
             --server-side-encryption-configuration $ENCRYPTION_CONFIG
-          echo "Encryption enabled!"
 
           aws s3api put-public-access-block \
             --bucket $STATE_BUCKET \
-            --public-access-block-configuration "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"
-          echo "Public access blocked!"
+            --public-access-block-configuration \
+            "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"
 
-          echo "State bucket created: $STATE_BUCKET"
+          echo "State bucket created!"
         fi
 
-        echo "========================================="
         echo "Bootstrap Complete!"
-        echo "S3 Bucket: $STATE_BUCKET"
-        echo "Locking  : S3 Native Lockfile"
-        echo "========================================="
 
     - name: Setup Terraform
       uses: hashicorp/setup-terraform@v3
@@ -103,9 +96,7 @@ jobs:
         echo "Terraform initialized!"
 
     - name: Terraform Validate
-      run: |
-        terraform validate
-        echo "Terraform valid!"
+      run: terraform validate
 
     - name: Terraform Format Check
       run: terraform fmt -check
@@ -129,7 +120,7 @@ jobs:
         github.event.inputs.action == 'apply')
       run: |
         terraform apply -auto-approve tfplan
-        echo "EC2 instance created!"
+        echo "EC2 created!"
 
     - name: Terraform Destroy
       if: github.event.inputs.action == 'destroy'
@@ -142,16 +133,41 @@ jobs:
           -var="ami_id=ami-0c02fb55956c7d316"
         echo "EC2 destroyed!"
 
-    - name: Show Outputs
+    # ─────────────────────────────────────────
+    # Download PEM from S3
+    # Save EC2 IP for deploy pipeline
+    # ─────────────────────────────────────────
+    - name: Get EC2 Info and Download PEM
       if: github.event.inputs.action != 'destroy'
       run: |
+        PUBLIC_IP=$(terraform output -raw public_ip)
+        PEM_S3_PATH="s3://ec2-terraform-state-373447294485/keys/EC2App-deploy-key.pem"
+
         echo "========================================="
-        echo "  TERRAFORM OUTPUTS"
+        echo "  EC2 CREATED SUCCESSFULLY!"
+        echo "  Public IP : $PUBLIC_IP"
+        echo "  PEM File  : $PEM_S3_PATH"
         echo "========================================="
-        terraform output
+
+        echo "Downloading PEM file from S3..."
+        aws s3 cp $PEM_S3_PATH ./EC2App-deploy-key.pem
+        chmod 600 ./EC2App-deploy-key.pem
+        echo "PEM file downloaded!"
+
+        echo "Testing SSH connection..."
+        ssh-keyscan -H $PUBLIC_IP >> ~/.ssh/known_hosts
+        ssh -i ./EC2App-deploy-key.pem \
+          -o StrictHostKeyChecking=no \
+          ec2-user@$PUBLIC_IP \
+          "echo 'SSH connection successful!'"
+
         echo "========================================="
-        echo "  STATE FILE LOCATION"
-        echo "  Bucket : ec2-terraform-state-373447294485"
-        echo "  Key    : ec2/terraform.tfstate"
-        echo "  Locking: S3 Native Lockfile"
+        echo "  Add to GitHub Secrets for deploy:"
+        echo "  EC2_HOST = $PUBLIC_IP"
+        echo "  EC2_SSH_KEY = (download from S3)"
+        echo "  $PEM_S3_PATH"
         echo "========================================="
+
+    - name: Show Outputs
+      if: github.event.inputs.action != 'destroy'
+      run: terraform output

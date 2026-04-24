@@ -8,6 +8,41 @@ locals {
 }
 
 # ─────────────────────────────────────────
+# GENERATE SSH KEY PAIR
+# Terraform generates private + public key
+# No manual key generation needed!
+# ─────────────────────────────────────────
+resource "tls_private_key" "ec2_key" {
+  algorithm = "RSA"
+  rsa_bits  = 4096
+}
+
+# Create key pair in AWS using generated public key
+resource "aws_key_pair" "deployer" {
+  key_name   = "${var.project_name}-deploy-key"
+  public_key = tls_private_key.ec2_key.public_key_openssh
+
+  tags = merge(local.common_tags, {
+    Name = "${var.project_name}-deploy-key"
+  })
+}
+
+# Save private key as .pem file in S3
+# So GitHub Actions can download it!
+resource "aws_s3_object" "private_key" {
+  bucket  = "ec2-terraform-state-373447294485"
+  key     = "keys/${var.project_name}-deploy-key.pem"
+  content = tls_private_key.ec2_key.private_key_pem
+
+  # Restrict access
+  server_side_encryption = "AES256"
+
+  tags = merge(local.common_tags, {
+    Name = "${var.project_name}-deploy-key.pem"
+  })
+}
+
+# ─────────────────────────────────────────
 # VPC
 # ─────────────────────────────────────────
 resource "aws_vpc" "main" {
@@ -91,14 +126,6 @@ resource "aws_security_group" "ec2" {
   }
 
   ingress {
-    description = "HTTPS"
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
     description = "Spring Boot"
     from_port   = 8080
     to_port     = 8080
@@ -126,16 +153,13 @@ resource "aws_instance" "app_server" {
   instance_type          = var.instance_type
   subnet_id              = aws_subnet.public.id
   vpc_security_group_ids = [aws_security_group.ec2.id]
+  key_name               = aws_key_pair.deployer.key_name
 
   user_data = <<-EOF
     #!/bin/bash
     yum update -y
     yum install -y java-21-amazon-corretto
-    yum install -y git
-    yum install -y docker
-    systemctl start docker
-    systemctl enable docker
-    usermod -aG docker ec2-user
+    yum install -y lsof
     mkdir -p /app
     chown ec2-user:ec2-user /app
     echo "EC2 setup complete!"
